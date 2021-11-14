@@ -1,3 +1,5 @@
+'use strict';
+
 async function getSetting(keys) {
   return new Promise((resolve) => {
     chrome.storage.sync.get(keys, (values) => {
@@ -24,6 +26,7 @@ async function getSetting(keys) {
           case 'closeAllRight':
           case 'closeAllLeft':
           case 'bypassCache':
+          case 'unloadedOnly':
             result = value == true
             break
           default:
@@ -65,9 +68,9 @@ async function init() {
   }
 }
 
-async function onStorageChanged(changes) {
-  for (key in changes) {
-    if (key.startsWith('reload') || key == 'bypassCache' || key.startsWith('close')) {
+function onStorageChanged(changes) {
+  for (let key in changes) {
+    if (key.startsWith('reload') || key == 'bypassCache' || key == 'unloadedOnly' || key.startsWith('close')) {
       await updateContextMenu()
     }
   }
@@ -137,6 +140,7 @@ async function updateContextMenu() {
 
   const setting = await getSetting([
     'bypassCache',
+    'unloadedOnly',
     'reloadWindow',
     'reloadAllWindows',
     'reloadPinnedOnly',
@@ -150,6 +154,11 @@ async function updateContextMenu() {
   let attributions = ''
   if (setting.bypassCache) {
     attributions = ' (cache bypassed)'
+  }
+
+  if (setting.unloadedOnly)
+  {
+    attributions = ' (unloaded only)'
   }
 
   if (setting.reloadWindow) {
@@ -284,6 +293,15 @@ function reloadWindow(win, options = {}) {
   })
 }
 
+/**
+ * Reload tab
+ */
+async function reloadTab(tab) {
+  const { bypassCache } = await getSetting(['bypassCache'])
+  console.log(`reloading ${tab.url}, cache bypassed: ${bypassCache}`)
+  chrome.tabs.reload(tab.id, { bypassCache }, null)
+}
+
 // When this gets complicated, create a strategy pattern.
 async function reloadStrategy(tab, strategy, options = {}) {
   let issueReload = true
@@ -325,9 +343,31 @@ async function reloadStrategy(tab, strategy, options = {}) {
   }
 
   if (issueReload) {
-    const { bypassCache } = await getSetting(['bypassCache'])
-    console.log(`reloading ${tab.url}, cache bypassed: ${bypassCache}`)
-    chrome.tabs.reload(tab.id, { bypassCache }, null)
+    if (await getSetting(['unloadedOnly']))
+    {
+      // None of the tab's properties tell us whether a tab is currently loaded,
+      // so instead we do a trivial sendMessage to each tab and see which tabs
+      // respond; the tabs that respond are loaded.
+
+      var cancelScheduledReload = function (result)
+      {
+        // We expect an error if the extension's content script isn't currently
+        // loaded in that tab; ignore such errors.
+        if (!chrome.runtime.lastError)
+        {
+          clearTimeout(this.timerIDs[tab.id])
+        }
+      }
+
+      // The timeout of 500 is an arbitrary value designed to ensure that
+      // slower devices' tabs will have time to respond to the message.
+      this.timerIDs[tab.id] = setTimeout(function () { reloadTab(tab) }, 500)
+      chrome.tabs.sendMessage(tab.id, null, cancelScheduledReload)
+    }
+    else
+    {
+      reloadTab(tab)
+    }
   }
 }
 

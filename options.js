@@ -1,3 +1,5 @@
+'use strict';
+
 window.addEventListener('load', onLoad, false)
 
 /**
@@ -75,6 +77,7 @@ function onRestore() {
     'closeAllLeft',
     'closeAllRight',
     'bypassCache',
+    'unloadedOnly',
     'buttonDefaultAction',
     'version'
   ]
@@ -91,6 +94,7 @@ function onRestore() {
     setupCheckbox('closeAllLeft', settings.closeAllLeft)
     setupCheckbox('closeAllRight', settings.closeAllRight)
     setupCheckbox('bypassCache', settings.bypassCache)
+    setupCheckbox('unloadedOnly', settings.unloadedOnly)
 
     setupDropdown('buttonDefaultAction', settings.buttonDefaultAction, 'window')
   })
